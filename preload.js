@@ -1,0 +1,21 @@
+const { contextBridge, ipcRenderer } = require('electron');
+contextBridge.exposeInMainWorld('api', {
+  openFileDialog:       ()            => ipcRenderer.invoke('open-file-dialog'),
+  openSaveDialog:       (name)        => ipcRenderer.invoke('open-save-dialog', name),
+  getVideoInfo:         (p)           => ipcRenderer.invoke('get-video-info', p),
+  getFps:               (p)           => ipcRenderer.invoke('get-fps', p),
+  checkPlayability:     (p)           => ipcRenderer.invoke('check-playability', p),
+  makePreview:          (p)           => ipcRenderer.invoke('make-preview', p),
+  getKeyframesNear:     (p, t, w)     => ipcRenderer.invoke('get-keyframes-near', p, t, w),
+  detectScenes:         (p, th)       => ipcRenderer.invoke('detect-scenes', p, th),
+  detectScenesRange:    (p, th, s, e) => ipcRenderer.invoke('detect-scenes-range', p, th, s, e),
+  exportScenes:         (opts)        => ipcRenderer.invoke('export-scenes', opts),
+  showInFolder:         (p)           => ipcRenderer.invoke('show-in-folder', p),
+  getPreviewCacheInfo:  ()            => ipcRenderer.invoke('get-preview-cache-info'),
+  clearPreviewCache:    ()            => ipcRenderer.invoke('clear-preview-cache'),
+  openPreviewFolder:    ()            => ipcRenderer.invoke('open-preview-folder'),
+  onDetectProgress:     (cb) => ipcRenderer.on('detect-progress',  (_, d) => cb(d)),
+  onExportProgress:     (cb) => ipcRenderer.on('export-progress',  (_, d) => cb(d)),
+  onPreviewProgress:    (cb) => ipcRenderer.on('preview-progress', (_, d) => cb(d)),
+  onExportDebug:        (cb) => ipcRenderer.on('export-debug',     (_, d) => cb(d)),
+});

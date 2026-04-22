@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' file: data: blob:;">
+<title>Scene Cutter</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg:#0d0d10; --s1:#141418; --s2:#1c1c24; --s3:#242430;
+  --border:#2a2a38; --accent:#7c6fff; --red:#ff5f7e; --green:#3ddc84;
+  --text:#ddddf0; --text2:#66668a; --r:6px;
+  --smart:#fbbf24; --kf:#22d3ee;
+}
+body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  background:var(--bg); color:var(--text); height:100vh;
+  display:flex; flex-direction:column; overflow:hidden; user-select:none; }
+
+/* ── Header ── */
+.hdr { display:flex; align-items:center; gap:8px; padding:6px 12px;
+  background:var(--s1); border-bottom:1px solid var(--border); flex-shrink:0; }
+.logo { font-size:13px; font-weight:800; color:var(--accent); white-space:nowrap; }
+.file-name { font-size:11px; color:var(--text2); flex:1; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; padding:0 8px; }
+.btn { padding:4px 10px; border-radius:var(--r); border:none; cursor:pointer;
+  font-size:11px; font-weight:600; transition:filter .15s;
+  display:inline-flex; align-items:center; gap:4px; }
+.btn:disabled { opacity:.3; cursor:not-allowed; }
+.btn-ghost  { background:var(--s3); color:var(--text); border:1px solid var(--border); }
+.btn-ghost:hover:not(:disabled)  { filter:brightness(1.2); }
+.btn-accent { background:var(--accent); color:#fff; }
+.btn-accent:hover:not(:disabled) { filter:brightness(1.15); }
+.btn-red    { background:var(--red); color:#fff; }
+.btn-red:hover:not(:disabled)    { filter:brightness(1.1); }
+.btn-green  { background:var(--green); color:#000; }
+.btn-green:hover:not(:disabled)  { filter:brightness(1.1); }
+.btn-warn   { background:#92400e; color:#fbbf24; border:1px solid #78350f; }
+.btn-warn:hover:not(:disabled)   { filter:brightness(1.2); }
+.vr { width:1px; height:16px; background:var(--border); flex-shrink:0; }
+
+/* ── Player ── */
+.player { flex:0 0 auto; background:#000; display:flex; align-items:center;
+  justify-content:center; position:relative; min-height:180px; }
+.drop { display:flex; flex-direction:column; align-items:center; gap:10px;
+  color:var(--text2); padding:48px; text-align:center; }
+.drop svg { opacity:.2; }
+.drop p { font-size:14px; } .drop small { font-size:11px; opacity:.6; }
+#vid { max-width:100%; max-height:100%; display:none; }
+#vid.on { display:block; }
+
+/* Overlay */
+.ov { position:absolute; inset:0; background:rgba(0,0,0,.78);
+  display:none; flex-direction:column; align-items:center;
+  justify-content:center; gap:10px; z-index:20; }
+.ov.on { display:flex; }
+.spin { width:34px; height:34px; border:3px solid var(--border);
+  border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* ── Controls ── */
+.ctrl { display:none; flex-direction:column; gap:5px;
+  padding:7px 12px; background:var(--s1);
+  border-top:1px solid var(--border); flex-shrink:0; }
+.ctrl.on { display:flex; }
+.seek-wrap { position:relative; height:5px; background:var(--border);
+  border-radius:3px; cursor:pointer; }
+.seek-fill { height:100%; background:var(--accent); border-radius:3px; width:0%; pointer-events:none; }
+.seek-thumb { position:absolute; top:50%; left:0%; transform:translate(-50%,-50%);
+  width:13px; height:13px; background:#fff; border-radius:50%; pointer-events:none; transition:transform .1s; }
+.seek-wrap:hover .seek-thumb { transform:translate(-50%,-50%) scale(1.2); }
+.kf-strip { position:relative; height:4px; background:transparent; margin-top:1px; }
+.kf-tick { position:absolute; top:0; width:2px; height:4px;
+  background:var(--kf); border-radius:1px; transform:translateX(-50%); opacity:.7; }
+.ctrl-row { display:flex; align-items:center; gap:6px; }
+.ic-btn { background:none; border:none; color:var(--text); cursor:pointer;
+  padding:3px; border-radius:4px; display:flex; align-items:center; }
+.ic-btn:hover { color:var(--accent); }
+.time-lbl { font-size:11px; color:var(--text2); font-variant-numeric:tabular-nums; min-width:105px; }
+.sp { flex:1; }
+.vol-row { display:flex; align-items:center; gap:4px; }
+input[type=range] { -webkit-appearance:none; height:3px; border-radius:2px;
+  background:var(--border); outline:none; cursor:pointer; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:11px;
+  height:11px; background:var(--accent); border-radius:50%; }
+
+/* ── Cut Mode ── */
+.cut-mode-wrap { display:flex; align-items:center; gap:5px; }
+.cut-mode-wrap label { font-size:10px; color:var(--text2); white-space:nowrap; }
+#cutMode { background:var(--s3); color:var(--text); border:1px solid var(--border);
+  border-radius:var(--r); padding:3px 7px; font-size:11px; cursor:pointer; outline:none; transition:border-color .15s; }
+#cutMode:hover, #cutMode:focus { border-color:var(--accent); }
+
+/* ── Timeline ── */
+.tl-section { flex:1; display:flex; flex-direction:column; min-height:0; }
+.tl-hdr { display:flex; align-items:center; gap:8px; padding:5px 12px;
+  background:var(--s1); border-top:1px solid var(--border); flex-shrink:0; flex-wrap:wrap; }
+.tl-hdr h3 { font-size:11px; font-weight:700; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; }
+.badge { font-size:10px; padding:2px 7px; border-radius:20px;
+  background:var(--s2); border:1px solid var(--border); color:var(--text2); }
+.badge.a { border-color:var(--accent); color:var(--accent); background:rgba(124,111,255,.12); }
+.zoom-row { display:flex; align-items:center; gap:5px; font-size:10px; color:var(--text2); }
+.tl-canvas-wrap { flex:1; position:relative; overflow:hidden; cursor:default; min-height:0; }
+canvas { display:block; }
+
+/* ── Export bar ── */
+.exp { display:none; align-items:center; gap:8px; padding:6px 12px;
+  background:var(--s2); border-top:1px solid var(--border); flex-shrink:0; flex-wrap:wrap; }
+.exp.on { display:flex; }
+.exp-info { flex:1; font-size:11px; color:var(--text2); min-width:160px; }
+.exp-info b { color:var(--text); }
+.prog { width:140px; height:3px; background:var(--border); border-radius:2px; display:none; overflow:hidden; }
+.prog.on { display:block; }
+.prog-fill { height:100%; background:var(--accent); width:0%; transition:width .3s; }
+.stat { font-size:10px; color:var(--text2); min-width:160px; }
+
+/* ── Cache modal ── */
+.modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:300;
+  display:none; align-items:center; justify-content:center; }
+.modal-backdrop.on { display:flex; }
+.modal { background:var(--s2); border:1px solid var(--border); border-radius:10px;
+  padding:24px; min-width:340px; max-width:480px; box-shadow:0 20px 60px rgba(0,0,0,.7); }
+.modal h2 { font-size:14px; font-weight:700; margin-bottom:4px; }
+.modal p  { font-size:12px; color:var(--text2); margin-bottom:16px; line-height:1.5; }
+.modal-row { display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+.modal-info { background:var(--s3); border-radius:var(--r); padding:10px 14px;
+  font-size:12px; margin-bottom:16px; border:1px solid var(--border); }
+.modal-info span { color:var(--text); font-weight:600; }
+
+/* ── Context menu ── */
+.ctx { position:fixed; background:var(--s2); border:1px solid var(--border);
+  border-radius:var(--r); padding:4px; z-index:200; display:none;
+  min-width:170px; box-shadow:0 8px 24px rgba(0,0,0,.6); }
+.ctx.on { display:block; }
+.ci { padding:6px 10px; font-size:11px; cursor:pointer; border-radius:4px; color:var(--text); }
+.ci:hover { background:var(--accent); }
+.ci.danger { color:var(--red); }
+.ci.danger:hover { background:var(--red); color:#fff; }
+.csep { height:1px; background:var(--border); margin:3px 0; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="hdr">
+  <span class="logo">✂️ Scene Cutter</span>
+  <span class="file-name" id="fileName">No file selected</span>
+  <button class="btn btn-ghost" id="analyzeBtn" style="display:none">🔍 Analyze All</button>
+  <button class="btn btn-ghost" id="analyzeRangeBtn" style="display:none" title="Analyze ±2.5 min around current position">🎯 Analyze Range</button>
+  <div class="vr" id="vr1" style="display:none"></div>
+  <button class="btn btn-ghost" id="cacheBtn" title="Manage preview cache for incompatible formats (MPEG, etc.)">🗂 Preview Cache</button>
+  <button class="btn btn-ghost" id="openBtn">📂 Open</button>
+</div>
+
+<!-- Player -->
+<div class="player" id="player" style="height:44vh">
+  <div class="drop" id="drop">
+    <svg width="52" height="52" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
+        d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+    </svg>
+    <p>Click Open or drag & drop a video file</p>
+    <small>MP4 · MKV · MOV · AVI · WebM · TS · MXF · MPEG · and more</small>
+  </div>
+  <video id="vid" preload="metadata"></video>
+  <div class="ov" id="ov">
+    <div class="spin"></div>
+    <span id="ovMsg" style="color:#fff;font-size:13px">Loading...</span>
+    <span id="ovSub" style="color:#888;font-size:11px"></span>
+  </div>
+</div>
+
+<!-- Controls -->
+<div class="ctrl" id="ctrl">
+  <div class="seek-wrap" id="seekWrap">
+    <div class="seek-fill" id="seekFill"></div>
+    <div class="seek-thumb" id="seekThumb"></div>
+  </div>
+  <div class="kf-strip" id="kfStrip"></div>
+  <div class="ctrl-row">
+    <button class="ic-btn" id="btnPlay" title="Play / Pause (Space)">
+      <svg id="icoPlay" width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M8 5v14l11-7z"/>
+      </svg>
+    </button>
+    <button class="ic-btn" title="One frame back (,)" id="btnFrameB">
+      <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+    </button>
+    <button class="ic-btn" title="One frame forward (.)" id="btnFrameF">
+      <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+    </button>
+    <div class="vr"></div>
+    <button class="ic-btn" title="Snap nearest trim edge to playhead position" id="btnSnapTrim"
+      style="padding:0 8px;gap:5px;display:flex;align-items:center;opacity:0.35;cursor:not-allowed">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <rect x="1" y="1" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.4" fill="none"/>
+        <line x1="8" y1="3" x2="8" y2="13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <span style="font-size:11px;white-space:nowrap">Snap Trim</span>
+    </button>
+    <button class="ic-btn" title="Add a new trim edge at playhead position" id="btnAddTrim"
+      style="padding:0 8px;gap:5px;display:flex;align-items:center;opacity:0.35;cursor:not-allowed">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <rect x="1" y="1" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.4" fill="none"/>
+        <line x1="8" y1="4" x2="8" y2="12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        <line x1="4" y1="8" x2="12" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <span style="font-size:11px;white-space:nowrap">Add Trim</span>
+    </button>
+    <button class="ic-btn" title="Add a new independent segment on the timeline" id="btnAddScene"
+      style="padding:0 8px;gap:5px;display:flex;align-items:center;opacity:0.35;cursor:not-allowed">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <rect x="1" y="3" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.4" fill="none"/>
+        <line x1="8" y1="6" x2="8" y2="10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        <line x1="6" y1="8" x2="10" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <span style="font-size:11px;white-space:nowrap">Add Segment</span>
+    </button>
+    <span class="time-lbl" id="timeLbl">0:00 / 0:00</span>
+    <div class="sp"></div>
+    <span id="kfIndicator"
+      style="font-size:10px;padding:2px 7px;border-radius:20px;border:1px solid var(--kf);color:var(--kf);background:rgba(34,211,238,.08);display:none"
+      title="Playhead is on a keyframe">⚡ Keyframe</span>
+    <div class="vr"></div>
+    <div class="vol-row">
+      <button class="ic-btn" id="muteBtn">
+        <svg id="icoVol" width="15" height="15" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
+        </svg>
+      </button>
+      <input type="range" id="volSl" min="0" max="1" step="0.05" value="1" style="width:65px">
+    </div>
+    <button class="ic-btn" id="fsBtn" title="Fullscreen (F)">
+      <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<!-- Timeline -->
+<div class="tl-section" id="tlSection" style="display:none">
+  <div class="tl-hdr">
+    <h3>Timeline</h3>
+    <span class="badge" id="scBadge"></span>
+    <span class="badge a" id="selBadge" style="display:none"></span>
+    <div class="sp"></div>
+    <div class="zoom-row">
+      <span id="zoomLbl" style="min-width:36px">1×</span>
+      <span style="font-size:10px;color:var(--text2)">Ctrl+scroll = zoom</span>
+    </div>
+    <input type="range" id="zoomSl" min="1" max="30" step="0.5" value="1" style="display:none">
+    <div class="vr"></div>
+    <span style="font-size:11px;color:var(--text2);white-space:nowrap">Sensitivity:</span>
+    <input type="range" id="sensitivitySl" min="0.01" max="0.60" step="0.01" value="0.05"
+      style="width:70px" title="Scene detection sensitivity — lower = more scenes detected">
+    <span id="sensitivityLbl" style="font-size:11px;color:var(--text2);min-width:28px">0.05</span>
+    <div class="vr"></div>
+    <button class="btn btn-ghost" id="clearSelBtn" style="display:none">✕ Clear Selection</button>
+  </div>
+  <div class="tl-canvas-wrap" id="tlWrap">
+    <canvas id="tl"></canvas>
+  </div>
+</div>
+
+<!-- Export bar -->
+<div class="exp" id="expBar">
+  <div class="exp-info" id="expInfo">Analyze or select scenes to export</div>
+  <div class="prog" id="prog"><div class="prog-fill" id="progFill"></div></div>
+  <span class="stat" id="statLbl"></span>
+  <div class="cut-mode-wrap">
+    <label for="cutMode"
+      title="Smart Cut: only re-encodes tiny non-keyframe boundaries, rest is lossless copy.&#10;Lossless: pure stream copy, snaps to nearest keyframe.&#10;Re-encode: full quality-matched re-encode.">
+      Cut mode:
+    </label>
+    <select id="cutMode">
+      <option value="smart">🧠 Smart Cut</option>
+      <option value="lossless">⚡ Lossless</option>
+
+    </select>
+  </div>
+  <button class="btn btn-red" id="expBtn" disabled>✂️ Export</button>
+</div>
+
+<!-- Context menu -->
+<div class="ctx" id="ctx">
+  <div class="ci" id="ctxStart">⏮ Go to segment start</div>
+  <div class="ci" id="ctxEnd">⏭ Go to segment end</div>
+  <div class="csep"></div>
+  <div class="ci" id="ctxTrimStart">✂️ Set start to playhead</div>
+  <div class="ci" id="ctxTrimEnd">✂️ Set end to playhead</div>
+  <div class="csep"></div>
+  <div class="ci danger" id="ctxDel">🗑 Remove trim edge</div>
+</div>
+
+<!-- Preview Cache Modal -->
+<div class="modal-backdrop" id="cacheModal">
+  <div class="modal">
+    <h2>🗂 Preview Cache</h2>
+    <p>
+      When you open a video in a format that Chromium can't play natively (MPEG-1/2, DivX, VC-1, etc.),
+      Scene Cutter creates a low-quality H.264 preview file for playback only.
+      All cuts and exports still use your original file — no quality loss.
+    </p>
+    <div class="modal-info" id="cacheInfo">
+      Checking cache…
+    </div>
+    <p style="font-size:11px;color:var(--text2);margin-bottom:16px">
+      Cache location: <span id="cacheDirLabel" style="color:var(--text);word-break:break-all"></span>
+    </p>
+    <div class="modal-row">
+      <button class="btn btn-ghost" id="cacheOpenFolder">📁 Open Folder</button>
+      <button class="btn btn-warn" id="cacheClear">🗑 Clear Cache</button>
+      <button class="btn btn-ghost" id="cacheClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="renderer.js"></script>
+</body>
+</html>
