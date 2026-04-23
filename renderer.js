@@ -120,8 +120,17 @@ async function loadFile(fp) {
     playable = res.playable;
   } catch(e) {}
 
+  // Always reset the video element fully before setting a new src.
+  // Chromium aggressively caches media — without this, switching files
+  // at the same path can show the old video.
+  vid.pause();
+  vid.removeAttribute('src');
+  vid.load();
+
+  // Cache-buster: append ?t=<timestamp> so Chromium never serves a stale file
+  const cb = `?t=${Date.now()}`;
+
   if (!playable) {
-    // Need to transcode a preview proxy
     setOv(true, 'Converting format...', 'Creating low-quality preview for playback (export will use original file)');
     try {
       window.api.onPreviewProgress(d => {
@@ -130,14 +139,12 @@ async function loadFile(fp) {
         }
       });
       const previewPath = await window.api.makePreview(fp);
-      // Play the preview, but export from original
-      vid.src = 'file:///' + previewPath.replace(/\\/g, '/');
+      vid.src = 'file:///' + previewPath.replace(/\\/g, '/') + cb;
     } catch(e) {
-      // If transcoding fails, try original anyway
-      vid.src = 'file:///' + fp.replace(/\\/g, '/');
+      vid.src = 'file:///' + fp.replace(/\\/g, '/') + cb;
     }
   } else {
-    vid.src = 'file:///' + fp.replace(/\\/g, '/');
+    vid.src = 'file:///' + fp.replace(/\\/g, '/') + cb;
   }
 
   vid.classList.add('on');

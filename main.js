@@ -118,15 +118,27 @@ ipcMain.handle('check-playability', async (_, fp) => {
 const previewCache = new Map();
 
 ipcMain.handle('make-preview', async (_, fp) => {
-  if (previewCache.has(fp)) {
-    const cached = previewCache.get(fp);
-    if (fs.existsSync(cached)) return cached;
-  }
   const tmpDir = path.join(os.tmpdir(), 'scene-cutter-preview');
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-  const hash = Buffer.from(fp).toString('base64').replace(/[^a-zA-Z0-9]/g,'').slice(0,16);
-  const previewPath = path.join(tmpDir, `preview_${hash}.mp4`);
-  if (fs.existsSync(previewPath)) { previewCache.set(fp, previewPath); return previewPath; }
+
+  // Always delete ALL existing previews for this base filename before creating
+  // a new one. This guarantees we never serve a stale preview regardless of
+  // cache state, file size, or modification time.
+  const baseName = path.basename(fp).replace(/[^a-zA-Z0-9]/g, '_');
+  try {
+    const existing = fs.readdirSync(tmpDir).filter(f => f.startsWith(`preview_${baseName}_`));
+    for (const f of existing) {
+      try { fs.unlinkSync(path.join(tmpDir, f)); } catch(_) {}
+    }
+  } catch(_) {}
+
+  // Also clear this path from the in-memory cache entirely
+  for (const [key] of previewCache) {
+    if (key.startsWith(fp)) previewCache.delete(key);
+  }
+
+  // New unique filename: baseName + timestamp → always fresh
+  const previewPath = path.join(tmpDir, `preview_${baseName}_${Date.now()}.mp4`);
 
   mainWindow.webContents.send('preview-progress', { status: 'converting', pct: 0 });
   await runFF([
