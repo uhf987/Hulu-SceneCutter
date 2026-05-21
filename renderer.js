@@ -917,6 +917,10 @@ expBtn.addEventListener('click', async () => {
       window.api.showInFolder(fp);
       prog.classList.remove('on'); progFill.style.width='0%'; statLbl.textContent='';
       expBtn.disabled=false; clearSelBtn.disabled=false;
+      // Export sonrası seçili sahneleri sıfırla
+      scenes.forEach(s => s.selected = false);
+      drawTl();
+      updateExpBar();
     }, 2000);
   } catch(err) {
     statLbl.textContent = '❌ ' + err.message.split('\n')[0];
